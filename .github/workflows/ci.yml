@@ -18,9 +18,22 @@ on:
         required: false
         default: true
         type: boolean
+      moodle-plugin-ci-version:
+        description: Exact moodlehq/moodle-plugin-ci release to install.
+        required: false
+        default: '4.5.10'
+        type: string
 
 jobs:
   test:
+    # The github context belongs to the caller, so callers can skip only this
+    # reusable Moodle CI job without suppressing their other workflows.
+    if: >-
+      ${{
+        !contains(github.event.head_commit.message, '[skip moodle-ci]') &&
+        !contains(github.event.pull_request.title, '[skip moodle-ci]') &&
+        !contains(github.event.pull_request.body, '[skip moodle-ci]')
+      }}
     name: test (${{ matrix.php }}, ${{ matrix.moodle-branch }}, ${{ matrix.database }})
     runs-on: ubuntu-22.04
 
@@ -79,7 +92,7 @@ jobs:
 
       - name: Initialise moodle-plugin-ci
         run: |
-          composer create-project -n --no-dev --prefer-dist moodlehq/moodle-plugin-ci ci ^4
+          composer create-project -n --no-dev --prefer-dist moodlehq/moodle-plugin-ci ci "${{ inputs.moodle-plugin-ci-version }}"
           echo $(cd ci/bin; pwd) >> $GITHUB_PATH
           echo $(cd ci/vendor/bin; pwd) >> $GITHUB_PATH
           sudo locale-gen en_AU.UTF-8
