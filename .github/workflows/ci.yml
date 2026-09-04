@@ -21,8 +21,11 @@ on:
       moodle-plugin-ci-version:
         description: Exact moodlehq/moodle-plugin-ci release to install.
         required: false
-        default: '4.5.10'
+        default: '4.5.11'
         type: string
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -76,7 +79,7 @@ jobs:
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: plugin
 
@@ -84,7 +87,6 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: ${{ matrix.extensions }}
           ini-values: max_input_vars=5000
           # If you are not using code coverage, keep "none". Otherwise, use "pcov" (Moodle 3.10 and up) or "xdebug".
           # If you try to use code coverage with "none", it will fallback to phpdbg (which has known problems).
