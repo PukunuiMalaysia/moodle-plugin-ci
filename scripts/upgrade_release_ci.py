@@ -36,7 +36,7 @@ def main():
         shutil.copy2(backup / ".moodle-plugin-ci.yml", target / ".moodle-plugin-ci.yml")
     php(root / "admin/cli/upgrade.php", "--non-interactive")
     php(root / "admin/tool/phpunit/cli/init.php")
-    php(root / "admin/tool/behat/cli/init.php", "--install")
+    php(root / "admin/tool/behat/cli/init.php", "--disable-composer", "--scss-deprecations")
 
 
 if __name__ == "__main__":
