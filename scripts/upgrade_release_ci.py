@@ -10,15 +10,31 @@ import zipfile
 
 
 def php(script, *args):
-    subprocess.run(["php", str(script), *args], check=True)
+    result = subprocess.run(["php", str(script), *args])
+    if result.returncode:
+        # Do not include generated test administrator credentials in a traceback.
+        raise RuntimeError(f"PHP validation failed: {script}")
+
+
+def cli_paths(base):
+    webroot = base / "public" if (base / "public").is_dir() else base
+    paths = {
+        "install": base / "admin/cli/install_database.php",
+        "upgrade": base / "admin/cli/upgrade.php",
+        "phpunit": webroot / "admin/tool/phpunit/cli/init.php",
+        "behat": webroot / "admin/tool/behat/cli/init.php",
+    }
+    if any(not path.is_file() for path in paths.values()):
+        raise ValueError("Unsupported Moodle CLI layout")
+    return webroot, paths
 
 
 def main():
     component = os.environ["COMPONENT"]
     if not re.fullmatch(r"[a-z]+_[a-z0-9_]+", component):
         raise ValueError("Invalid component")
-    root = Path("moodle/public") if Path("moodle/public").is_dir() else Path("moodle")
-    php(root / "admin/cli/install_database.php", "--agree-license", "--adminuser=releaseadmin",
+    root, paths = cli_paths(Path("moodle"))
+    php(paths["install"], "--agree-license", "--adminuser=releaseadmin",
         f"--adminpass={uuid.uuid4().hex}Aa1!", "--adminemail=release@example.invalid",
         "--fullname=Release validation", "--shortname=release")
     # Ask Moodle itself for the component path; no type-to-directory guesswork.
@@ -34,9 +50,9 @@ def main():
         archive.extractall(target.parent)
     if (backup / ".moodle-plugin-ci.yml").is_file():
         shutil.copy2(backup / ".moodle-plugin-ci.yml", target / ".moodle-plugin-ci.yml")
-    php(root / "admin/cli/upgrade.php", "--non-interactive")
-    php(root / "admin/tool/phpunit/cli/init.php")
-    php(root / "admin/tool/behat/cli/init.php", "--disable-composer", "--scss-deprecations")
+    php(paths["upgrade"], "--non-interactive")
+    php(paths["phpunit"])
+    php(paths["behat"], "--disable-composer", "--scss-deprecations")
 
 
 if __name__ == "__main__":
