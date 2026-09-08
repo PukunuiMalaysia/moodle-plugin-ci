@@ -135,7 +135,9 @@ jobs:
           COMPONENT: ${{ inputs.component }}
           UPGRADE_SHA: ${{ inputs.upgrade-from-sha }}
           INSTALLATION: ${{ matrix.installation }}
-        run: python3 release-tools/scripts/prepare_release_ci.py
+        run: |
+          (cd release-tools && python3 -m unittest discover -s tests)
+          python3 release-tools/scripts/prepare_release_ci.py
 
       - name: Setup PHP ${{ matrix.php }}
         uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
