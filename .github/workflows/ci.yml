@@ -3,6 +3,30 @@ name: Moodle Plugin CI
 on:
   workflow_call:
     inputs:
+      release-validation:
+        description: Mandatory exact-package validation; ignores skip moodle-ci markers.
+        type: boolean
+        default: false
+      release-sha:
+        type: string
+        default: ''
+      release-tools-ref:
+        description: Reviewed full SHA of this repository's packaging tools.
+        type: string
+        default: ''
+      package-sha256:
+        type: string
+        default: ''
+      component:
+        type: string
+        default: ''
+      upgrade-from-sha:
+        description: Previous supported plugin commit for the upgrade lane.
+        type: string
+        default: ''
+      installation-modes:
+        type: string
+        default: '["fresh"]'
       moodle-branch:
         description: JSON array of Moodle branches to test.
         required: false
@@ -38,11 +62,12 @@ jobs:
     # reusable Moodle CI job without suppressing their other workflows.
     if: >-
       ${{
+        inputs.release-validation || (
         !contains(github.event.head_commit.message, '[skip moodle-ci]') &&
         !contains(github.event.pull_request.title, '[skip moodle-ci]') &&
-        !contains(github.event.pull_request.body, '[skip moodle-ci]')
+        !contains(github.event.pull_request.body, '[skip moodle-ci]'))
       }}
-    name: test (${{ matrix.php }}, ${{ matrix.moodle-branch }}, ${{ matrix.database }})
+    name: ${{ inputs.release-validation && format('test ({0}, {1}, {2}, {3})', matrix.php, matrix.moodle-branch, matrix.database, matrix.installation) || format('test ({0}, {1}, {2})', matrix.php, matrix.moodle-branch, matrix.database) }}
     runs-on: ubuntu-22.04
 
     services:
@@ -72,6 +97,7 @@ jobs:
         php: ${{ fromJSON(inputs.php-versions) }}
         moodle-branch: ${{ fromJSON(inputs.moodle-branch) }}
         database: [pgsql, mariadb]
+        installation: ${{ fromJSON(inputs.installation-modes) }}
         exclude:
           - php: '8.1'
             moodle-branch: 'MOODLE_501_STABLE'
@@ -84,12 +110,35 @@ jobs:
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
         with:
           path: plugin
+          ref: ${{ inputs.release-validation && inputs.release-sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out reviewed release tools
+        if: ${{ inputs.release-validation }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.0
+        with:
+          repository: PukunuiMalaysia/moodle-plugin-ci
+          ref: ${{ inputs.release-tools-ref }}
+          path: release-tools
+          persist-credentials: false
+
+      - name: Prepare exact release ZIP for installation
+        if: ${{ inputs.release-validation }}
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          TOOLS_SHA: ${{ inputs.release-tools-ref }}
+          PACKAGE_SHA256: ${{ inputs.package-sha256 }}
+          COMPONENT: ${{ inputs.component }}
+          UPGRADE_SHA: ${{ inputs.upgrade-from-sha }}
+          INSTALLATION: ${{ matrix.installation }}
+        run: python3 release-tools/scripts/prepare_release_ci.py
 
       - name: Setup PHP ${{ matrix.php }}
-        uses: shivammathur/setup-php@v2
+        uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # v2
         with:
           php-version: ${{ matrix.php }}
           ini-values: max_input_vars=5000
@@ -136,12 +185,18 @@ jobs:
           done < <(jq -c '.[]' <<<"$ADDITIONAL_PLUGIN_REPOSITORIES")
           php moodle/admin/cli/upgrade.php --non-interactive
 
+      - name: Validate upgrade from reviewed previous version
+        if: ${{ inputs.release-validation && matrix.installation == 'upgrade' }}
+        env:
+          COMPONENT: ${{ inputs.component }}
+        run: python3 release-tools/scripts/upgrade_release_ci.py
+
       - name: PHP Lint
         if: ${{ !cancelled() }}
         run: moodle-plugin-ci phplint
 
       - name: PHP Mess Detector
-        continue-on-error: true # This step will show errors but will not fail
+        continue-on-error: ${{ !inputs.release-validation }}
         if: ${{ !cancelled() }}
         run: moodle-plugin-ci phpmd
 
@@ -180,7 +235,7 @@ jobs:
 
       - name: Upload Behat Faildump
         if: ${{ failure() && steps.behat.outcome == 'failure' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: Behat Faildump (${{ join(matrix.*, ', ') }})
           path: ${{ github.workspace }}/moodledata/behat_dump
